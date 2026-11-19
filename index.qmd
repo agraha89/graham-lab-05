@@ -7,6 +7,7 @@ format:
     toc-depth: 3
     embed-resources: true
     code-tools: true
+    code-fold: true
 editor: visual
 execute:
   warning: false
@@ -70,7 +71,11 @@ gt(visits_summary) |>
   cols_label(p_zero = "% 0s") |> 
    fmt_number(columns = c(mean, var, p_zero),
               decimals = 2)
+```
 
+As shown above, the outcome is a count (i.e., whole numbers, bounded at zero, and right-skewed), describing the number of physician's office visits for each person (mean = `r round(visits_summary$mean, 2)`). Notably, the variance is `r round(visits_summary$var / visits_summary$mean, 2)` times the mean, suggesting overdispersion. Additionally, `r round(100 * visits_summary$p_zero)`% of the sample reported no visits, and `r sum(data$visits > 25)` individuals visited a physician more than 25 times in 1987-1988. See the plot below for the distribution of responses for this outcome.
+
+```{r}
 # Creating a plot of the overall distribution of the outcome variable (number of visits)
 descriptive_plot <- ggplot(data, aes(x = visits)) +
   geom_bar() +
@@ -78,8 +83,6 @@ descriptive_plot <- ggplot(data, aes(x = visits)) +
 
 descriptive_plot
 ```
-
-As shown above, the outcome is a count (i.e., whole numbers, bounded at zero, and right-skewed), describing the number of physician's office visits for each person (mean = `r round(visits_summary$mean, 2)`). Notably, the variance is `r round(visits_summary$var / visits_summary$mean, 2)` times the mean, suggesting overdispersion. Additionally, `r round(100 * visits_summary$p_zero)`% of the sample reported no visits, and `r sum(data$visits > 25)` individuals visited a physician more than 25 times in 1987-1988.
 
 The DHARMa plots, below, depict substantial violations of Gaussian assumptions, suggesting that a linear model would be a poor fit for the data. The QQ plot shows a significant deviation from the expected residual distribution (KS test *p* \< .001) and the residuals-versus-predicted plot reveals significant quantile deviations. Notably, if a linear model was used, it could predict negative article counts. Additionally, a Gaussian model assumes constant variance (i.e., puts mass on negative counts and too little mass at zeros) and treats effects as additive. On the other hand, count variance grows with the mean and it is more natural for a predictor to multiply the expected count.
 
@@ -103,7 +106,7 @@ I will fit an intercept-only model and two increasingly complex substantive mode
 | Model | Formula | Research rationale |
 |:-----------------------|:-----------------------|:-----------------------|
 | null: Null | `visits ~ 1` | Baseline model |
-| one_pred: chronic | `visits ~ chronic` | Number of visits varies with number of chronic conditions |
+| one_pred: Chronic | `visits ~ chronic` | Number of visits varies with number of chronic conditions |
 | full poisson: Full | `visits ~ chronic + health + gender + school + insurance` | Other predictors explain additional variation |
 
 The models are **nested**: Each successive model contains all predictors from the preceding model, plus one or more additional predictors.
@@ -188,7 +191,9 @@ comparison_table |> #Formatting combined results into gt table
     missing_text = "—")
 ```
 
-Based on the above model comparison statistics, the **Model 2** (i.e., the full model) seems to fit the data best. This is because the log-likelihood test for Model 2 is statistically significant, χ²(5) = 959.92, *p* \< .001, suggesting that it fits the data better than Model 1 (which also fits the data significantly better than the intercept-only model). The degrees of freedom values reflect the difference in the number of parameters between a model and its precursor. Additionally, Model 2 also has the lowest AIC and BIC values, indicating it has the best model fit, even when accounting for model complexity. As will be presented shortly, all of the predictors in Model 2 explain significant variability in the outcome, further highlighting its potential predictive value.
+Based on the above model comparison statistics, the **Model 2** (i.e., the full model) seems to fit the data best. This is because the log-likelihood test for Model 2 is statistically significant, χ²(5) = 959.92, *p* \< .001, suggesting that it fits the data better than Model 1 (which also fits the data significantly better than the intercept-only model; χ²(1) = 2175.43, *p* \< .001). Additionally, Model 2 also has the lowest AIC and BIC values, indicating it has the best model fit, even when accounting for model complexity. As will be presented shortly, all of the predictors in Model 2 explain significant variability in the outcome, further highlighting its potential predictive value.
+
+The degrees of freedom values reflect the difference in the number of parameters between a model and its precursor. The intercept-only model estimates the average number of physician's office visits without accounting for any predictors.
 
 ## Poisson Diagnostic Tests
 
@@ -217,6 +222,7 @@ res_pois <- simulateResiduals(poisson, n = 500, plot = FALSE)
 # and residuals vs. predicted values (should be flat)
 plot(res_pois)
 ```
+The diagnostic tests demonstrate, however, that a Poisson regression model does not adequately fit the data. The QQ plot below shows that the observed residuals differ significantly from the expected uniform distribution, depicting an S-shaped pattern instead of following the diagonal reference line. The dispersion test is also significant, flagging that the variance exceeds the mean and violating the Poisson assumption that the variance is equal to the mean. The outlier test is also significant, further indicating that another count model other than Poisson may better fit the data. The right-hand plot also indicates assumption violations, as the residuals are clearly not uniformly distributed across the range of predicted values, with a Levene's test flagging significant heterogeneity in the variability of residuals.
 
 ```{r}
 #| echo: true
@@ -230,7 +236,6 @@ disp_pois
 zi_pois <- testZeroInflation(res_pois)
 zi_pois
 ```
-The diagnostic tests demonstrate, however, that a Poisson regression model does not adequately fit the data. The QQ plot below shows that the observed residuals differ significantly from the expected uniform distribution, depicting an S-shaped pattern instead of following the diagonal reference line. The dispersion test is also significant, flagging that the variance exceeds the mean and violating the Poisson assumption that the variance is equal to the mean. The outlier test is also significant, further indicating that another count model other than Poisson may better fit the data. The right-hand plot also indicates assumption violations, as the residuals are clearly not uniformly distributed across the range of predicted values, with a Levene's test flagging significant heterogeneity in the variability of residuals.
 
 The dispersion ratio is `r round(disp_pois$statistic, 2)` (`r ifelse(disp_pois$p.value < .001, "*p* < .001", paste0("*p* = ", round(disp_pois$p.value, 3)))`), and there are `r round(zi_pois$statistic, 2)` times as many zeros as the Poisson expects. The observed data are more variable than a Poisson allows. This matters because a Poisson's standard errors assume variance = mean. When the data are overdispersed, those SEs are too small, CIs are too narrow, and *p*-values are too optimistic.
 
@@ -351,7 +356,7 @@ interaction_results <- as.data.frame(summary(interact)$coefficients$cond)
 lrt_int <- anova(m_hurd, interact)
 gt(lrt_int)
 ```
-The interaction was not significant here, χ²(`r abs(lrt_int[2, "Chi Df"])`) = `r sprintf("%.2f", lrt_int[2, "Chisq"])`, `r ifelse(lrt_int[2, "Pr(>Chisq)"] < .001, "*p* < .001", paste0("*p* = ", round(lrt_int[2, "Pr(>Chisq)"], 3)))`, but I will probe it below anyway.
+The interaction was not significant here, χ²(`r abs(lrt_int[2, "Chi Df"])`) = `r sprintf("%.2f", lrt_int[2, "Chisq"])`, `r ifelse(lrt_int[2, "Pr(>Chisq)"] < .001, "*p* < .001", paste0("*p* = ", round(lrt_int[2, "Pr(>Chisq)"], 3)))`, but I will probe it below anyway to better understand the patterns of results and different levels of both chronic condition and insurance status.
 
 ```{r}
 # Predicted mean number of visits from the interaction model, on the count scale.
@@ -431,7 +436,7 @@ contrast_df |>
     subtitle = "Hurdle Negative-Binomial Regression") |>
   tab_source_note("Log contrast = No − Yes; z-tests and p-values are computed on the log scale.")
 ```
-There is little evidence that the association between the number of chronic conditions and physician’s office visits differs according to health insurance status. Although the number of chronic conditions was significantly and positively associated with visits among both uninsured (*b* = `r round(slopes_sum$chronic.trend[slopes_sum$insurance == "no"], 2)`, *p* `r ifelse(slopes_sum$p.value[slopes_sum$insurance == "no"] < .001, "< .001", paste0("= ", round(slopes_sum$p.value[slopes_sum$insurance == "no"], 3)))`) and insured individuals (*b* = `r round(slopes_sum$chronic.trend[slopes_sum$insurance == "yes"], 2)`, *p* `r ifelse(slopes_sum$p.value[slopes_sum$insurance == "yes"] < .001, "< .001", paste0("= ", round(slopes_sum$p.value[slopes_sum$insurance == "yes"], 3)))`), the difference between these slopes was not statistically significant (*b* = `r round(pairs_slopes$estimate, 2)`, *p* = `r round(pairs_slopes$p.value, 3)`). Expectedly, the interaction term corroborated that health status does not affect the association between the number of chronic conditions and physician’s office visits (b = `r round(interaction_results["chronic:insuranceyes", "Estimate"], 2)`, SE = `r round(interaction_results["chronic:insuranceyes", "Std. Error"], 2)`, z = `r round(interaction_results["chronic:insuranceyes", "z value"], 2)`, *p* `r ifelse(interaction_results["chronic:insuranceyes", "Pr(>|z|)"] < .001, "< .001", paste0("= ", round(interaction_results["chronic:insuranceyes", "Pr(>|z|)"], 3)))`). Adding the interaction to the hurdle negative binomial model did not significantly improve model fit, χ²(`r abs(lrt_int[2, "Chi Df"])`) = `r sprintf("%.2f", lrt_int[2, "Chisq"])`, `r ifelse(lrt_int[2, "Pr(>Chisq)"] < .001, "*p* < .001", paste0("*p* = ", round(lrt_int[2, "Pr(>Chisq)"], 3)))`. Although the simple effects analysis (above) demonstrated that individuals with health insurance visited physicians' significantly more frequently across the three levels of chronic health conditions, these findings do not establish interaction effects. Thus, the omnibus interaction test and probing results provided little support for insurance status moderating the relationship between chronic conditions and physician visits, suggesting low confidence in the interaction effect.
+There is little evidence that the association between the number of chronic conditions and physician’s office visits differs according to health insurance status. Although the number of chronic conditions was significantly and positively associated with visits among both uninsured (*b* = `r round(slopes_sum$chronic.trend[slopes_sum$insurance == "no"], 2)`, *p* `r ifelse(slopes_sum$p.value[slopes_sum$insurance == "no"] < .001, "< .001", paste0("= ", round(slopes_sum$p.value[slopes_sum$insurance == "no"], 3)))`) and insured individuals (*b* = `r round(slopes_sum$chronic.trend[slopes_sum$insurance == "yes"], 2)`, *p* `r ifelse(slopes_sum$p.value[slopes_sum$insurance == "yes"] < .001, "< .001", paste0("= ", round(slopes_sum$p.value[slopes_sum$insurance == "yes"], 3)))`), the difference between these slopes was not statistically significant (*b* = `r round(pairs_slopes$estimate, 2)`, *p* = `r round(pairs_slopes$p.value, 3)`). Expectedly, the interaction term corroborated that health status does not affect the association between the number of chronic conditions and physician’s office visits (b = `r round(interaction_results["chronic:insuranceyes", "Estimate"], 2)`, SE = `r round(interaction_results["chronic:insuranceyes", "Std. Error"], 2)`, z = `r round(interaction_results["chronic:insuranceyes", "z value"], 2)`, *p* `r ifelse(interaction_results["chronic:insuranceyes", "Pr(>|z|)"] < .001, "< .001", paste0("= ", round(interaction_results["chronic:insuranceyes", "Pr(>|z|)"], 3)))`). Adding the interaction to the hurdle negative binomial model did not significantly improve model fit, χ²(`r abs(lrt_int[2, "Chi Df"])`) = `r sprintf("%.2f", lrt_int[2, "Chisq"])`, `r ifelse(lrt_int[2, "Pr(>Chisq)"] < .001, "*p* < .001", paste0("*p* = ", round(lrt_int[2, "Pr(>Chisq)"], 3)))`. The simple effects analysis (above) demonstrated that individuals with health insurance visited physicians' significantly more frequently across the three levels of chronic health conditions. Although there was a very slight downward trend in the associations as the number of chronic conditions increased, these findings do not establish interaction effects. Thus, the omnibus interaction test and probing results provided little support for insurance status moderating the relationship between chronic conditions and physician visits, suggesting low confidence in the interaction effect.
 
 ## Results
 The current analysis investigated whether a variety of factors influenced the frequency of physicians' office visits in the U.S. 
